@@ -67,6 +67,77 @@ La propuesta mantiene responsabilidades separadas y aplica los principios KISS y
 **Consideración de extensibilidad:** La incorporación de una categoría completamente nueva todavía exige declararla en CategoriaGasto y crear su estrategia correspondiente. Sin embargo, no requiere modificar SelectorCalculadora ni las estrategias existentes.
 **Conclusión:** El mapa con inyección automática representa la alternativa más adecuada para RF2, porque la variabilidad de las fórmulas es real y está documentada en los requisitos, lo que justifica la aplicación del patrón Strategy sin introducir abstracciones innecesarias.
 
+### Decisión de diseño 3 — Mantener arquitectura en capas simples y conservar el punto de extensión de notificaciones
+
+**Problema identificado**
+Después de integrar los patrones Chain of Responsibility, Strategy y Observer, fue necesario evaluar si el sistema debía adoptar una arquitectura Hexagonal completa, introduciendo puertos y adaptadores para todas las dependencias externas, o si convenía conservar la arquitectura en capas simples implementada durante la Parte 1. a evaluación se realizó considerando las necesidades actuales de persistencia y notificación, así como el criterio de la Guía de la Unidad 12, sección 6.2, relativo a sistemas con una vida útil prolongada y cambios de infraestructura previstos.
+
+**Alternativas evaluadas**
+1. **Migrar a arquitectura Hexagonal completa:** introducir una interfaz `RepositorioSolicitudes` como puerto de persistencia, crear un adaptador JPA que la implemente y establecer abstracciones adicionales para las integraciones externas.
+2. **Mantener la arquitectura en capas simples:** conservar la dependencia directa de `SolicitudReembolsoService` hacia `RepositorioSolicitudesJpa` y aprovechar la interfaz `ObservadorCambioEstado` que ya desacopla los mecanismos de notificación.
+
+**Decisión tomada**
+Se seleccionó la segunda alternativa: mantener una arquitectura en capas simples para la persistencia y conservar el mecanismo Observer existente para las notificaciones.
+
+**Justificación técnica**
+
+En cuanto a la persistencia, actualmente se utiliza Spring Data JPA con H2 y no existe un requisito documentado que exija sustituir el mecanismo de almacenamiento o incorporar implementaciones alternativas. Crear un puerto adicional supondría introducir una abstracción sin una necesidad concreta que la justifique. or otra parte, el área de Contabilidad tiene prevista una integración con una API externa durante el próximo trimestre. Sin embargo, el servicio ya utiliza `List<ObservadorCambioEstado>` y no depende de las clases concretas de notificación.
+
+Por esta razón, la futura integración podrá implementarse modificando o reemplazando `NotificadorContabilidad`, manteniendo el contrato `ObservadorCambioEstado` y sin necesidad de alterar la coordinación de los otros observadores. a decisión aplica los principios **YAGNI** y **KISS**, priorizando una arquitectura proporcional a las necesidades actuales y evitando introducir interfaces innecesarias.
+
+**Consecuencias positivas**
+- Se evita agregar interfaces y adaptadores de persistencia sin un requisito real.
+- Se mantiene una estructura sencilla, comprensible y fácil de mantener.
+- La futura integración externa de Contabilidad cuenta con un punto de extensión mediante Observer.
+- Se conservan las responsabilidades diferenciadas de dominio, procesamiento, aplicación e infraestructura.
+- Se reducen los costos asociados al mantenimiento de abstracciones especulativas.
+
+**Consecuencias negativas**
+- `SolicitudReembolsoService` permanece acoplado directamente a Spring Data JPA.
+- Un cambio significativo en la estrategia de persistencia podría requerir introducir un puerto y refactorizar parte de la aplicación.
+- La arquitectura no presenta simetría completa entre todas las dependencias externas.
+- El mecanismo actual de notificación es síncrono y la futura integración con una API externa podría requerir manejo de fallos, reintentos, tiempos de espera e idempotencia.
+
+**Condiciones para reconsiderar la decisión**
+Se reevaluará la necesidad de adoptar puertos y adaptadores cuando existan requisitos concretos de persistencia alternativa, nuevas integraciones que no puedan aprovechar las interfaces existentes o necesidades verificables de aislamiento de infraestructura.
+
+**Conclusión**
+No se considera necesaria una migración completa a arquitectura Hexagonal. Se conserva la dependencia directa hacia JPA y se aprovecha el desacoplamiento que ya ofrece Observer para preparar la integración externa conocida. Esta elección evita sobreingeniería sin impedir una futura evolución del sistema.
+
+---
+
+## Resumen del ADR-001 — Decisión arquitectónica de persistencia y notificación
+
+**Documento:** `docs/adr/ADR-001.md`  
+**Estado:** Aceptado  
+**Fecha:** 2026-11-11
+
+El ADR-001 documenta la evaluación arquitectónica realizada después de integrar los tres patrones de comportamiento en el Sistema de Solicitudes de Reembolso de Gastos Corporativos.
+
+La decisión establece dos criterios principales:
+
+**1. Persistencia: conservar la arquitectura en capas simples.**
+`SolicitudReembolsoService` mantiene su dependencia directa hacia `RepositorioSolicitudesJpa`, debido a que no existe actualmente una necesidad documentada de introducir una segunda implementación de persistencia. Por tanto, no se incorpora el puerto intermedio `RepositorioSolicitudes`.
+
+**2. Notificaciones: conservar la interfaz Observer existente.**
+La interfaz `ObservadorCambioEstado` ya permite separar la coordinación del servicio de las implementaciones de notificación. La integración futura con una API externa de Contabilidad podrá aprovechar este punto de extensión, sin introducir anticipadamente otra jerarquía de interfaces.
+
+**Impacto arquitectónico**
+La decisión permite conservar una estructura sencilla, mantener las responsabilidades diferenciadas y evitar abstracciones especulativas. Como contrapartida, se acepta conscientemente el acoplamiento del servicio con Spring Data JPA y la posibilidad de realizar ajustes futuros si cambian los requisitos de infraestructura. a decisión es coherente con los principios YAGNI y KISS y con las restricciones verificadas mediante ArchUnit.
+
+**Relación con las reglas arquitectónicas**
+
+- **Regla 1:** protege el paquete `procesamiento` frente a dependencias de infraestructura, adaptadores y tecnologías de persistencia.
+- **Regla 2:** evita que el controlador REST acceda directamente a componentes fuera de los límites permitidos.
+- **Regla 3:** verifica que las calculadoras concretas implementen el contrato `CalculadoraReembolso`.
+- **Regla 4:** verifica que los notificadores concretos implementen `ObservadorCambioEstado`.
+
+Estas reglas protegen los límites arquitectónicos definidos sin exigir un puerto de persistencia que fue descartado justificadamente.
+
+**Resultado**
+El ADR-001 establece que la complejidad arquitectónica debe responder a necesidades reales y verificables. No se descarta una futura evolución hacia una arquitectura más desacoplada, pero se evita implementarla anticipadamente sin evidencia que la justifique.
+Para consultar el contexto completo, las alternativas evaluadas y las consecuencias positivas y negativas, revisar el archivo [ADR-001](docs/adr/ADR-001.md).
+
 ### Decisión de diseño 4 — Delimitación de dependencias permitidas en el paquete procesamiento
 
 **Problema identificado:** Durante la implementación de las reglas ArchUnit fue necesario determinar qué dependencias externas pueden utilizar las clases del paquete `procesamiento`, sin comprometer la separación de responsabilidades establecida en ADR-001.
