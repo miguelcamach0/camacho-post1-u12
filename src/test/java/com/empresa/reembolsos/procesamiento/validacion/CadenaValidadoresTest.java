@@ -17,156 +17,157 @@ import com.empresa.reembolsos.dominio.SolicitudReembolso;
 
 class CadenaValidadoresTest {
 
-    private CadenaValidadores cadena;
+        private CadenaValidadores cadena;
 
-    @BeforeEach
-    void configurar() {
-        cadena = new CadenaValidadores(
-                new ValidadorDocumentosSoporte(),
-                new ValidadorMontoMaximo(),
-                new ValidadorDuplicados()
-        );
-    }
+        @BeforeEach
+        void configurar() {
+                cadena = new CadenaValidadores(
+                                new ValidadorDocumentosSoporte(),
+                                new ValidadorMontoMaximo(),
+                                new ValidadorDuplicados());
+        }
 
-    private SolicitudReembolso crearSolicitud(
-            String empleado,
-            CategoriaGasto categoria,
-            String monto,
-            boolean documentos,
-            LocalDate fecha) {
+        private SolicitudReembolso crearSolicitud(
+                        String empleado,
+                        CategoriaGasto categoria,
+                        String monto,
+                        boolean documentos,
+                        LocalDate fecha) {
 
-        SolicitudReembolso solicitud =
-                new SolicitudReembolso();
+                SolicitudReembolso solicitud = new SolicitudReembolso();
 
-        solicitud.setEmpleadoId(empleado);
-        solicitud.setCategoria(categoria);
-        solicitud.setMontoSolicitado(
-                new BigDecimal(monto));
-        solicitud.setDocumentosSoporte(documentos);
-        solicitud.setFechaGasto(fecha);
+                solicitud.setEmpleadoId(empleado);
+                solicitud.setCategoria(categoria);
+                solicitud.setMontoSolicitado(
+                                new BigDecimal(monto));
+                solicitud.setDocumentosSoporte(documentos);
+                solicitud.setFechaGasto(fecha);
 
-        return solicitud;
-    }
+                // Configurar dias validos para solicitudes de viaje
+                solicitud.setDiasViaje(
+                                categoria == CategoriaGasto.VIAJE ? 1 : 0);
 
-    @Test
-    void solicitudValidaSuperaTodasLasVerificaciones() {
+                return solicitud;
+        }
 
-        var solicitud = crearSolicitud(
-                "EMP001",
-                CategoriaGasto.VIAJE,
-                "100000",
-                true,
-                LocalDate.of(2026, 11, 10));
+        @Test
+        void solicitudValidaSuperaTodasLasVerificaciones() {
 
-        var resultado = cadena.validar(
-                solicitud, List.of());
+                var solicitud = crearSolicitud(
+                                "EMP001",
+                                CategoriaGasto.VIAJE,
+                                "100000",
+                                true,
+                                LocalDate.of(2026, 11, 10));
 
-        assertTrue(resultado.valida());
-        assertNull(resultado.motivoRechazo());
-    }
+                var resultado = cadena.validar(
+                                solicitud, List.of());
 
-    @Test
-    void rechazaSolicitudSinDocumentos() {
+                assertTrue(resultado.valida());
+                assertNull(resultado.motivoRechazo());
+        }
 
-        var solicitud = crearSolicitud(
-                "EMP001",
-                CategoriaGasto.VIAJE,
-                "100000",
-                false,
-                LocalDate.of(2026, 11, 10));
+        @Test
+        void rechazaSolicitudSinDocumentos() {
 
-        var resultado = cadena.validar(
-                solicitud, List.of());
+                var solicitud = crearSolicitud(
+                                "EMP001",
+                                CategoriaGasto.VIAJE,
+                                "100000",
+                                false,
+                                LocalDate.of(2026, 11, 10));
 
-        assertFalse(resultado.valida());
-        assertEquals(
-                "Faltan documentos soporte",
-                resultado.motivoRechazo());
-    }
+                var resultado = cadena.validar(
+                                solicitud, List.of());
 
-    @Test
-    void rechazaMontoSuperiorAlTope() {
+                assertFalse(resultado.valida());
+                assertEquals(
+                                "Faltan documentos soporte",
+                                resultado.motivoRechazo());
+        }
 
-        var solicitud = crearSolicitud(
-                "EMP001",
-                CategoriaGasto.REPRESENTACION,
-                "2500000",
-                true,
-                LocalDate.of(2026, 11, 10));
+        @Test
+        void rechazaMontoSuperiorAlTope() {
 
-        var resultado = cadena.validar(
-                solicitud, List.of());
+                var solicitud = crearSolicitud(
+                                "EMP001",
+                                CategoriaGasto.REPRESENTACION,
+                                "2500000",
+                                true,
+                                LocalDate.of(2026, 11, 10));
 
-        assertFalse(resultado.valida());
-        assertTrue(resultado.motivoRechazo()
-                .contains("Monto excede"));
-    }
+                var resultado = cadena.validar(
+                                solicitud, List.of());
 
-    @Test
-    void rechazaSolicitudDuplicada() {
+                assertFalse(resultado.valida());
+                assertTrue(resultado.motivoRechazo()
+                                .contains("Monto excede"));
+        }
 
-        var solicitud = crearSolicitud(
-                "EMP001",
-                CategoriaGasto.VIAJE,
-                "100000",
-                true,
-                LocalDate.of(2026, 11, 10));
+        @Test
+        void rechazaSolicitudDuplicada() {
 
-        var pendiente = crearSolicitud(
-                "EMP001",
-                CategoriaGasto.VIAJE,
-                "90000",
-                true,
-                LocalDate.of(2026, 11, 2));
+                var solicitud = crearSolicitud(
+                                "EMP001",
+                                CategoriaGasto.VIAJE,
+                                "100000",
+                                true,
+                                LocalDate.of(2026, 11, 10));
 
-        var resultado = cadena.validar(
-                solicitud, List.of(pendiente));
+                var pendiente = crearSolicitud(
+                                "EMP001",
+                                CategoriaGasto.VIAJE,
+                                "90000",
+                                true,
+                                LocalDate.of(2026, 11, 2));
 
-        assertFalse(resultado.valida());
-        assertTrue(resultado.motivoRechazo()
-                .contains("solicitud pendiente"));
-    }
+                var resultado = cadena.validar(
+                                solicitud, List.of(pendiente));
 
-    @Test
-    void mismoMesDeOtroAnioNoEsDuplicado() {
+                assertFalse(resultado.valida());
+                assertTrue(resultado.motivoRechazo()
+                                .contains("solicitud pendiente"));
+        }
 
-        var solicitud = crearSolicitud(
-                "EMP001",
-                CategoriaGasto.VIAJE,
-                "100000",
-                true,
-                LocalDate.of(2026, 11, 10));
+        @Test
+        void mismoMesDeOtroAnioNoEsDuplicado() {
 
-        var pendienteAnterior = crearSolicitud(
-                "EMP001",
-                CategoriaGasto.VIAJE,
-                "90000",
-                true,
-                LocalDate.of(2025, 11, 2));
+                var solicitud = crearSolicitud(
+                                "EMP001",
+                                CategoriaGasto.VIAJE,
+                                "100000",
+                                true,
+                                LocalDate.of(2026, 11, 10));
 
-        var resultado = cadena.validar(
-                solicitud, List.of(pendienteAnterior));
+                var pendienteAnterior = crearSolicitud(
+                                "EMP001",
+                                CategoriaGasto.VIAJE,
+                                "90000",
+                                true,
+                                LocalDate.of(2025, 11, 2));
 
-        assertTrue(resultado.valida());
-    }
+                var resultado = cadena.validar(
+                                solicitud, List.of(pendienteAnterior));
 
-    @Test
-    void documentosSeValidanAntesDelMonto() {
+                assertTrue(resultado.valida());
+        }
 
-        var solicitud = crearSolicitud(
-                "EMP001",
-                CategoriaGasto.REPRESENTACION,
-                "2500000",
-                false,
-                LocalDate.of(2026, 11, 10));
+        @Test
+        void documentosSeValidanAntesDelMonto() {
 
-        var resultado = cadena.validar(
-                solicitud, List.of());
+                var solicitud = crearSolicitud(
+                                "EMP001",
+                                CategoriaGasto.REPRESENTACION,
+                                "2500000",
+                                false,
+                                LocalDate.of(2026, 11, 10));
 
-        assertFalse(resultado.valida());
-        assertEquals(
-                "Faltan documentos soporte",
-                resultado.motivoRechazo());
-    }
+                var resultado = cadena.validar(
+                                solicitud, List.of());
+
+                assertFalse(resultado.valida());
+                assertEquals(
+                                "Faltan documentos soporte",
+                                resultado.motivoRechazo());
+        }
 }
-

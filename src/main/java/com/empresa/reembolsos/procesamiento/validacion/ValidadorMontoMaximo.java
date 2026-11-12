@@ -14,11 +14,11 @@ import com.empresa.reembolsos.dominio.SolicitudReembolso;
 public class ValidadorMontoMaximo
         extends ValidadorSolicitud {
 
+    private static final BigDecimal TOPE_DIARIO_VIAJE =
+            new BigDecimal("150000");
+
     private static final Map<CategoriaGasto, BigDecimal> TOPES =
             Map.of(
-                CategoriaGasto.VIAJE,
-                new BigDecimal("150000"),
-
                 CategoriaGasto.REPRESENTACION,
                 new BigDecimal("2000000"),
 
@@ -31,8 +31,40 @@ public class ValidadorMontoMaximo
             SolicitudReembolso solicitud,
             List<SolicitudReembolso> pendientes) {
 
-        BigDecimal tope = TOPES.get(
-                solicitud.getCategoria());
+        if (solicitud.getCategoria() == null
+                || solicitud.getMontoSolicitado() == null) {
+            return ResultadoValidacion.rechazar(
+                    "Categoria y monto son obligatorios");
+        }
+
+        if (solicitud.getMontoSolicitado()
+                .compareTo(BigDecimal.ZERO) <= 0) {
+            return ResultadoValidacion.rechazar(
+                    "El monto solicitado debe ser positivo");
+        }
+
+        BigDecimal tope;
+
+        if (solicitud.getCategoria()
+                == CategoriaGasto.VIAJE) {
+
+            if (solicitud.getDiasViaje() <= 0) {
+                return ResultadoValidacion.rechazar(
+                        "Los dias de viaje deben ser mayores a cero");
+            }
+
+            tope = TOPE_DIARIO_VIAJE.multiply(
+                    BigDecimal.valueOf(
+                            solicitud.getDiasViaje()));
+
+        } else {
+            tope = TOPES.get(solicitud.getCategoria());
+        }
+
+        if (tope == null) {
+            return ResultadoValidacion.rechazar(
+                    "Categoria no soportada");
+        }
 
         return solicitud.getMontoSolicitado()
                 .compareTo(tope) > 0
