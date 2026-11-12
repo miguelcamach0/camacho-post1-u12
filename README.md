@@ -42,6 +42,24 @@ Los tres patrones seleccionados resuelven necesidades diferentes del sistema: Ch
 
 La propuesta mantiene responsabilidades separadas y aplica los principios KISS y YAGNI, ya que cada patrón responde a una variabilidad identificada en los requisitos y no a una necesidad hipotética sin fundamento.
 
+### Decisiones de diseño
+
+## Decisión de diseño 1 — Orden de ejecución de los validadores
+
+**Alternativas evaluadas:** Ejecutar primero la búsqueda de solicitudes duplicadas o dejarla como última verificación de la cadena.
+
+**Decisión tomada:** Se estableció el siguiente orden de validación: documentos soporte, monto máximo permitido y solicitudes duplicadas.
+
+**Justificación:** Se decidió ubicar primero las verificaciones de documentos y monto porque son comprobaciones sencillas que pueden resolverse rápidamente, mientras que la detección de duplicados requiere recorrer la lista de solicitudes pendientes del empleado. De esta manera, cuando una solicitud no tiene documentos o supera el monto permitido, el sistema puede rechazarla sin realizar comparaciones adicionales.
+
+**Ventajas:** Este orden reduce las operaciones innecesarias y permite detectar anticipadamente incumplimientos básicos, mejorando la eficiencia del procesamiento.
+
+**Desventajas:** Al detenerse en el primer error, el sistema no informa todos los incumplimientos de una solicitud en una sola respuesta. Además, si una solicitud presenta varios problemas, será necesario corregir el primero para descubrir los siguientes.
+
+**Alternativa descartada:** Se descartó ejecutar primero la validación de duplicados, porque obligaría a recorrer las solicitudes existentes incluso cuando faltaran documentos o se excediera el monto permitido.
+
+**Conclusión:** El orden seleccionado cumple el principio KISS, mantiene la lógica sencilla y prioriza las validaciones menos costosas. La decisión es adecuada para las necesidades actuales del sistema y podría revisarse si en el futuro se requiere informar todos los errores simultáneamente.
+
 ## Tecnologías utilizadas
 
 - Java 17
