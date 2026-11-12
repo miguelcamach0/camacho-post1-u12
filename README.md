@@ -101,6 +101,70 @@ La propuesta mantiene responsabilidades separadas y aplica los principios KISS y
 
 **Conclusión:** Se considera adecuado permitir las anotaciones de estereotipo de Spring dentro de `procesamiento` y prohibir específicamente las dependencias de persistencia y de adaptadores. Esta decisión aplica los principios KISS y YAGNI, evitando restricciones innecesarias mientras protege los límites arquitectónicos relevantes del proyecto.
 
+## Qué se descartó y por qué
+
+### Análisis de impacto: alternativas descartadas por sobreingeniería
+
+Durante el desarrollo del Sistema de Solicitudes de Reembolso de Gastos Corporativos se evaluaron alternativas que podrían aumentar la flexibilidad de la aplicación. Sin embargo, siguiendo el criterio de la Guía de la Unidad 12, sección 4.2, se consideró necesario distinguir entre una variabilidad real y documentada y una necesidad futura meramente especulativa. El objetivo de este análisis no consiste en rechazar definitivamente los patrones o las abstracciones adicionales, sino en justificar por qué no resultan necesarios para el alcance actual y establecer qué condiciones permitirían reconsiderarlos.
+
+### 1. Uso de ApplicationEventPublisher y @EventListener para las notificaciones
+
+**Alternativa considerada**
+Se contempló utilizar `ApplicationEventPublisher` de Spring para publicar eventos de cambio de estado de las solicitudes y emplear métodos anotados con `@EventListener` para que los distintos interesados reaccionaran a esos eventos. Esta solución podría reemplazar el mecanismo actual, donde `SolicitudReembolsoService` recibe una lista de implementaciones de `ObservadorCambioEstado` mediante inyección de dependencias.
+
+**Razones para descartarla**
+Actualmente existen tres observadores concretos: `NotificadorEmpleado`, `NotificadorContabilidad` y `NotificadorAuditoria`. El servicio no depende directamente de estas clases, sino de la interfaz `ObservadorCambioEstado`. Por tanto, ya se consigue el desacoplamiento requerido para agregar o sustituir notificadores.
+
+Incorporar un sistema de publicación de eventos mediante Spring introduciría un mecanismo adicional de comunicación sin resolver una necesidad funcional pendiente. Además, mantener una lista explícita de observadores facilita identificar el punto donde se generan las notificaciones y comprender el flujo de ejecución. La incorporación de eventos podría dificultar el seguimiento de las reacciones durante la depuración. Por otra parte, utilizar `ApplicationEventPublisher` no garantizaría automáticamente una ejecución asíncrona ni una entrega confiable de eventos.
+
+**Decisión tomada**
+Se conserva la interfaz `ObservadorCambioEstado` y la inyección de `List<ObservadorCambioEstado>`.
+
+**Señal futura para reconsiderarla**
+La decisión podría revisarse si diferentes módulos necesitaran publicar y consumir múltiples tipos de eventos de negocio, si surgiera la necesidad comprobada de desacoplar temporalmente las operaciones o si el sistema requiriera una infraestructura de eventos con requisitos específicos de entrega y procesamiento. En ese escenario se evaluaría si los eventos de Spring son suficientes o si se requiere un mecanismo de mensajería más robusto.
+
+### 2. Implementación anticipada de Visitor o Abstract Factory para exportar reportes
+**Alternativa considerada**
+Se evaluó anticipar la generación de reportes de solicitudes en múltiples formatos, como CSV, PDF y Excel, mediante una jerarquía de exportadores basada en Visitor o Abstract Factory. Este diseño permitiría seleccionar implementaciones de exportación y facilitaría incorporar formatos adicionales en el futuro.
+
+**Razones para descartarla**
+La necesidad considerada actualmente se limita al formato CSV, sin solicitudes adicionales documentadas para PDF o Excel. Por tanto, no existe una variación real de formatos que justifique mantener distintas implementaciones y una estructura de abstracción adicional. Crear desde ahora interfaces, fábricas y exportadores de formatos no solicitados representaría un caso de sobreingeniería.
+
+Además, una Abstract Factory estaría especialmente justificada si debieran crearse familias relacionadas de objetos, condición que no se ha identificado en este escenario. De acuerdo con el criterio de variabilidad de la sección 4.2 de la Guía, no se ha presentado una repetición suficiente de necesidades que justifique generalizar el diseño.
+
+**Decisión tomada**
+Se descarta implementar anticipadamente una jerarquía de exportadores. Si se desarrolla la exportación CSV, podrá resolverse inicialmente mediante un componente sencillo, sin introducir formatos adicionales que todavía no se requieren.
+
+**Señal futura para reconsiderarla**
+Se reconsiderará esta decisión cuando existan requisitos concretos para generar reportes en varios formatos, con comportamientos distintos que requieran implementaciones intercambiables. En ese momento deberá analizarse qué patrón se ajusta mejor al tipo de variabilidad identificada, en lugar de asumir de antemano que Visitor o Abstract Factory son necesarios.
+
+### 3. Jerarquía de excepciones para cada validador — decisión propia del proyecto
+**Alternativa considerada**
+Durante la implementación de Chain of Responsibility se contempló utilizar excepciones especializadas para representar cada tipo de rechazo de una solicitud.
+
+Por ejemplo:
+
+- `DocumentosSoporteException`, cuando faltaran los documentos exigidos.
+- `MontoMaximoException`, cuando se superara el límite permitido.
+- `SolicitudDuplicadaException`, cuando existiera otra solicitud equivalente.
+
+Cada excepción permitiría identificar directamente el tipo de incumplimiento mediante su clase.
+
+**Razones para descartarla**
+En la implementación actual, las validaciones producen un `ResultadoValidacion`, que expresa si la solicitud es válida y comunica el motivo de un rechazo. Cuando una validación falla, el servicio puede utilizar `SolicitudInvalidaException` para propagar ese motivo hacia el controlador REST. El manejo de errores existente no necesita realizar acciones diferentes según la clase de validador que rechazó la solicitud. En todos los casos se comunica una solicitud inválida mediante una respuesta HTTP 400.
+
+Crear una clase de excepción por cada validación aumentaría el número de archivos y de tipos que deben mantenerse, sin que exista actualmente un comportamiento diferente que lo justifique. También podría generar una jerarquía creciente cada vez que se incorpore una nueva regla de validación. Por tanto, esa alternativa introduciría complejidad estructural sin resolver una necesidad funcional adicional.
+
+**Decisión tomada**
+Se conserva `ResultadoValidacion` como mecanismo para expresar los resultados de la cadena de validadores y `SolicitudInvalidaException` como excepción común de aplicación. La información específica sobre el rechazo se mantiene en el mensaje asociado a la validación.
+
+**Señal futura para reconsiderarla**
+La decisión podría reconsiderarse si diferentes tipos de rechazo requirieran tratamientos claramente diferenciados. Por ejemplo, si una solicitud duplicada necesitara un código de error propio, si los documentos faltantes activaran un proceso específico de subsanación o si clientes externos debieran identificar automáticamente el tipo de incumplimiento. En tal caso, antes de introducir una jerarquía completa de excepciones, también podría evaluarse utilizar códigos de error estructurados, evitando depender de la interpretación de mensajes de texto. Esta revisión estaría motivada por nuevos comportamientos documentados y no por una generalización anticipada.
+
+### Conclusión del análisis de impacto
+
+El análisis de las tres alternativas demuestra que una solución arquitectónica más sofisticada no siempre representa una mejora para el sistema. En las notificaciones, la interfaz `ObservadorCambioEstado` ya proporciona el desacoplamiento requerido. En los reportes, todavía no existe una variación de formatos que justifique una jerarquía de exportación. En las validaciones, el uso conjunto de `ResultadoValidacion` y `SolicitudInvalidaException` satisface el comportamiento actual sin requerir excepciones especializadas. Estas decisiones son coherentes con los principios YAGNI y KISS y con el criterio de introducir abstracciones cuando exista una variabilidad real. Las alternativas descartadas no se consideran incorrectas ni prohibidas. Permanecen como posibilidades de evolución que deberán evaluarse nuevamente cuando aparezcan requisitos verificables que justifiquen su incorporación. En consecuencia, el proyecto mantiene una arquitectura proporcional a su complejidad actual, evitando costos de mantenimiento innecesarios y conservando puntos de extensión donde ya existe una necesidad identificada.
+
 ## Tecnologías utilizadas
 
 - Java 17
@@ -111,7 +175,3 @@ La propuesta mantiene responsabilidades separadas y aplica los principios KISS y
 - H2 Database
 - JUnit 5
 - ArchUnit 1.x
-
-## Estado del proyecto
-
-Diseño inicial y modelo de dominio de la Parte 1. Las implementaciones de los patrones, el servicio de aplicación, el controlador REST y las pruebas se incorporarán en los siguientes pasos.
